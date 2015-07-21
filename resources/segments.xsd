@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="segments" type="Segments"/>
+  <xs:complexType name="Segments">
+    <xs:sequence maxOccurs="unbounded">
+      <xs:element name="segment" type="Segment" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Segment">
+    <xs:attribute name="type" type="xs:string" />
+    <xs:attribute name="reverse" type="xs:boolean" />
+    <xs:attribute name="value" type="xs:string" />
+  </xs:complexType>
+</xs:schema>
