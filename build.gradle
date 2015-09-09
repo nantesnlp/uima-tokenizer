@@ -2,6 +2,7 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'maven'
 apply plugin: 'signing'
+apply plugin: 'maven-publish'
 
 group = 'fr.univ-nantes.julestar'
 archivesBaseName = 'uima-tokenizer'
@@ -34,6 +35,18 @@ dependencies {
 repositories {
 	mavenLocal()
 	mavenCentral()
+}
+
+publishing {
+	publications {
+		maven(MavenPublication) {
+			groupId group
+			artifactId archivesBaseName
+			version version
+
+			from components.java
+		}
+	}
 }
 
 if(hasProperty("ossrhUsername")) {
