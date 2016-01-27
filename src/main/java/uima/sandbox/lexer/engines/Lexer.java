@@ -19,7 +19,6 @@ import org.apache.uima.jcas.tcas.Annotation;
 import uima.sandbox.lexer.models.Tree;
 import uima.sandbox.lexer.models.Unit;
 import uima.sandbox.lexer.resources.SegmentBank;
-import fr.univnantes.lina.UIMAProfiler;
 
 public class Lexer extends JCasAnnotator_ImplBase {
 	
@@ -38,7 +37,6 @@ public class Lexer extends JCasAnnotator_ImplBase {
 
 	@Override
 	public void process(JCas cas) throws AnalysisEngineProcessException {
-		UIMAProfiler.getProfiler("AnalysisEngine").start(this, "process");
 		this.tokenize(cas);
 		Tree<Character> prefixes = this.bank.get("initial");
 		Tree<Character> suffixes = this.bank.get("final");
@@ -50,7 +48,6 @@ public class Lexer extends JCasAnnotator_ImplBase {
 			this.merge(cas, compound);
 			this.clean(cas);			
 		}
-		UIMAProfiler.getProfiler("AnalysisEngine").stop(this, "process");
 	}
 	
 	/**
