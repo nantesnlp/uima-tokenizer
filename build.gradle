@@ -6,7 +6,7 @@ apply plugin: 'maven-publish'
 
 group = 'fr.univ-nantes.julestar'
 archivesBaseName = 'uima-tokenizer'
-version = '1.1'
+version = '1.2'
 
 task javadocJar(type: Jar) {
 	classifier = 'javadoc'
@@ -30,8 +30,8 @@ if(hasProperty("signing.keyId")) {
 }
 
 dependencies {
-  compile 'org.apache.uima:uimaj-core:2.6.0'
-  compile "org.apache.uima:uimafit-core:2.1.0"
+  compile 'org.apache.uima:uimaj-core:2.10.0'
+  compile "org.apache.uima:uimafit-core:2.3.0"
 }
 
 repositories {
