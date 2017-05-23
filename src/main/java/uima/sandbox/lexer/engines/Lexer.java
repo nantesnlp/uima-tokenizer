@@ -86,28 +86,25 @@ public class Lexer extends JCasAnnotator_ImplBase {
 		for (int index = begin; index < length; index++) {
 			if (this.hasChanged(text,index)) {
 				if (!this.areSpaces(text,begin,index)) {
-					AnnotationFS annotation = this.annotate(cas,type,begin,index);
+					AnnotationFS annotation = this.createAnnotation(cas,type,begin,index);
 					cas.getCas().addFsToIndexes(annotation);
 				}
 				begin = index;
-			} else {
-				if (index == length - 1) {
-					if (!this.areSpaces(text,begin,index)) {
-						AnnotationFS annotation = this.annotate(cas,type,begin,index);
-						cas.getCas().addFsToIndexes(annotation);
-					}
-				}
-			}
+			} 
 		}
+			if (!this.areSpaces(text,begin,length)) {
+				AnnotationFS annotation = this.createAnnotation(cas,type,begin,length);
+				cas.getCas().addFsToIndexes(annotation);
+			}
 	}
 
 	private boolean areSpaces(String text, int begin, int end) {
-		boolean space = true;
 		for (int index = begin; index < end; index++) {
 			char current = text.charAt(index);
-			space = space && Character.isWhitespace(current);			
+			if(!Character.isWhitespace(current))
+				return false;
 		}
-		return space;
+		return true;
 	}
 
 	protected boolean hasChanged(String text,int index) {
@@ -170,92 +167,101 @@ public class Lexer extends JCasAnnotator_ImplBase {
 	}
 	
 	private void split(JCas cas, Tree<Character> prefixes, Tree<Character> suffixes) {
-		List<AnnotationFS> annotations = new ArrayList<AnnotationFS>();
+		List<AnnotationFS> splittedAnnotations = new ArrayList<AnnotationFS>();
+		List<AnnotationFS> deletedAnnotations = new ArrayList<AnnotationFS>();
 		Type type = this.getType(cas);
 		AnnotationIndex<Annotation> index = cas.getAnnotationIndex(type);
 		FSIterator<Annotation> iterator = index.iterator();
 		while (iterator.hasNext()) {
 			Annotation annotation = iterator.next();
-			this.prefixes(cas, type, annotation, prefixes, annotations);
-			this.suffixes(cas, type, annotation, suffixes, annotations);
-			
+			AnnotationFS resultingAnnotation = this.splitPrefix(cas, type, annotation, prefixes, splittedAnnotations, deletedAnnotations);
+			this.splitSuffix(cas, type, resultingAnnotation, suffixes, splittedAnnotations, deletedAnnotations);
 		}
-		for (AnnotationFS annotation :annotations) {
+		for (AnnotationFS annotation :splittedAnnotations) 
 			cas.getCas().addFsToIndexes(annotation);
-		}
+		for (AnnotationFS annotation:deletedAnnotations) 
+			cas.getCas().removeFsFromIndexes(annotation);
 	}
 
-	private void prefixes(JCas cas, Type type, Annotation annotation, Tree<Character> prefixes, List<AnnotationFS> annotations) {
-		AnnotationFS a = this.prefixes(cas,type,annotation.getBegin(),annotation.getEnd(),annotation.getBegin(),prefixes);
-		if (a != null) {
-			if (this.fill(cas, type, annotation, a)) {
-				annotations.add(a);
-				this.prefixes(cas, type, annotation, prefixes, annotations);
+	private AnnotationFS splitPrefix(JCas cas, Type type, AnnotationFS annotation, Tree<Character> prefixes, List<AnnotationFS> splittedAnnotations, List<AnnotationFS> deletedAnnotations) {
+		AnnotationFS coveringAnnotation = annotation;
+		AnnotationFS prefix = this.findPrefix(cas,type,annotation.getBegin(),annotation.getEnd(),annotation.getBegin(),prefixes);
+		if (prefix != null) {
+			if ((coveringAnnotation = this.fill(cas, type, coveringAnnotation, prefix, splittedAnnotations, deletedAnnotations)) != null) {
+				splittedAnnotations.add(prefix);
+				return this.splitPrefix(cas, type, coveringAnnotation, prefixes, splittedAnnotations, deletedAnnotations);
+			} 
+		}
+		return coveringAnnotation;
+	}
+
+	private AnnotationFS splitSuffix(JCas cas, Type type, AnnotationFS annotation, Tree<Character> suffixes, List<AnnotationFS> splittedAnnotations, List<AnnotationFS> deletedAnnotations) {
+		AnnotationFS coveringAnnotation = annotation;
+		AnnotationFS suffix = this.findSuffix(cas,type,annotation.getBegin(),annotation.getEnd(),annotation.getEnd(),suffixes);
+		if (suffix != null) {
+			if ((coveringAnnotation = this.fill(cas, type, coveringAnnotation, suffix, splittedAnnotations, deletedAnnotations)) != null) {
+				splittedAnnotations.add(suffix);
+				return this.splitSuffix(cas, type, coveringAnnotation, suffixes, splittedAnnotations, deletedAnnotations);
 			}
 		}
+		return coveringAnnotation;
 	}
 
-	private void suffixes(JCas cas, Type type, Annotation annotation, Tree<Character> suffixes, List<AnnotationFS> annotations) {
-		AnnotationFS b = this.suffixes(cas,type,annotation.getBegin(),annotation.getEnd(),annotation.getEnd(),suffixes);
-		if (b != null) {
-			if (this.fill(cas, type, annotation, b)) {
-				annotations.add(b);
-				this.suffixes(cas, type, annotation, suffixes, annotations);
-			}
-		}
-	}
-
-	private AnnotationFS prefixes(JCas cas,Type type,int begin,int end,int index,Tree<Character> current) {
+	private AnnotationFS findPrefix(JCas cas,Type type,int begin,int end,int index,Tree<Character> current) {
 		if (index < end) {
 			char ch = cas.getDocumentText().charAt(index);
 			Character c = Character.toLowerCase(ch);
 			Tree<Character> tree = current.get(c);
 			if (tree == null) {
 				if (current.leaf()) { 
-					return this.annotate(cas,type,begin,index);
+					return this.createAnnotation(cas,type,begin,index);
 				} else {
 					return null;
 				}
 			} else {
-				return this.prefixes(cas,type,begin,end,index + 1,tree);
+				return this.findPrefix(cas,type,begin,end,index + 1,tree);
 			}
 		} else {
 			return null;
 		}
 	}
 	
-	private AnnotationFS suffixes(JCas cas,Type type,int begin,int end,int index,Tree<Character> current) {
+	private AnnotationFS findSuffix(JCas cas,Type type,int begin,int end,int index,Tree<Character> current) {
 		if (index > begin) {
 			char ch = cas.getDocumentText().charAt(index - 1);
 			Character c = Character.toLowerCase(ch);
 			Tree<Character> tree = current.get(c);
 			if (tree == null) {
 				if (current.leaf()) {
-					return this.annotate(cas,type,index,end);
+					return this.createAnnotation(cas,type,index,end);
 				} else {
 					return null;
 				}
 			} else {
-				return this.suffixes(cas,type,begin,end,index - 1,tree);
+				return this.findSuffix(cas,type,begin,end,index - 1,tree);
 			}
 		} else {
 			return null;
 		}
 	}
 	
-	private boolean fill(JCas cas,Type type,Annotation coveringAnnotation,AnnotationFS coveredAnnotation) {
+	private AnnotationFS fill(JCas cas,Type type,AnnotationFS coveringAnnotation,AnnotationFS coveredAnnotation,List<AnnotationFS> splittedAnnotations,List<AnnotationFS> deletedAnnotations) {
 		if (coveringAnnotation.getBegin() < coveredAnnotation.getBegin()) {
-			coveringAnnotation.setEnd(coveredAnnotation.getBegin());
-			return true;
+			deletedAnnotations.add(coveringAnnotation);
+			AnnotationFS newCoveringAnnotation = this.createAnnotation(cas, type, coveringAnnotation.getBegin(), coveredAnnotation.getBegin());
+			splittedAnnotations.add(newCoveringAnnotation);
+			return newCoveringAnnotation;
 		} else if (coveredAnnotation.getEnd() < coveringAnnotation.getEnd()) {
-			coveringAnnotation.setBegin(coveredAnnotation.getEnd());
-			return true;
+			deletedAnnotations.add(coveringAnnotation);
+			AnnotationFS newCoveringAnnotation = this.createAnnotation(cas, type, coveredAnnotation.getEnd(), coveringAnnotation.getEnd());
+			splittedAnnotations.add(newCoveringAnnotation);
+			return newCoveringAnnotation;
 		} else {
-			return false;
+			return null;
 		}
 	}
 	
-	protected AnnotationFS annotate(JCas cas,Type type,int begin,int end) {
+	protected AnnotationFS createAnnotation(JCas cas,Type type,int begin,int end) {
 		return cas.getCas().createAnnotation(type, begin, end);
 	}
 	
