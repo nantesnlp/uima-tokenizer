@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import org.apache.uima.analysis_engine.AnalysisEngineProcessException;
 import org.apache.uima.cas.FSIterator;
@@ -21,6 +22,9 @@ import uima.sandbox.lexer.models.Unit;
 import uima.sandbox.lexer.resources.SegmentBank;
 
 public class Lexer extends JCasAnnotator_ImplBase {
+	
+	
+	private static final Pattern ABBREVIATION = Pattern.compile("^[A-Z][a-z]*\\.([A-Z][a-z]*\\.)+$");
 	
 	// parameters
 	public static final String PARAM_TYPE = "Type";
@@ -174,7 +178,15 @@ public class Lexer extends JCasAnnotator_ImplBase {
 		FSIterator<Annotation> iterator = index.iterator();
 		while (iterator.hasNext()) {
 			Annotation annotation = iterator.next();
+
+			/*
+			 * Split prefixes
+			 */
 			AnnotationFS resultingAnnotation = this.splitPrefix(cas, type, annotation, prefixes, splittedAnnotations, deletedAnnotations);
+			
+			/*
+			 * Split suffixes
+			 */
 			this.splitSuffix(cas, type, resultingAnnotation, suffixes, splittedAnnotations, deletedAnnotations);
 		}
 		for (AnnotationFS annotation :splittedAnnotations) 
@@ -185,6 +197,9 @@ public class Lexer extends JCasAnnotator_ImplBase {
 
 	private AnnotationFS splitPrefix(JCas cas, Type type, AnnotationFS annotation, Tree<Character> prefixes, List<AnnotationFS> splittedAnnotations, List<AnnotationFS> deletedAnnotations) {
 		AnnotationFS coveringAnnotation = annotation;
+		if(isAbbreviation(coveringAnnotation))
+			// do not split abbreviations
+			return coveringAnnotation;
 		AnnotationFS prefix = this.findPrefix(cas,type,annotation.getBegin(),annotation.getEnd(),annotation.getBegin(),prefixes);
 		if (prefix != null) {
 			if ((coveringAnnotation = this.fill(cas, type, coveringAnnotation, prefix, splittedAnnotations, deletedAnnotations)) != null) {
@@ -195,8 +210,20 @@ public class Lexer extends JCasAnnotator_ImplBase {
 		return coveringAnnotation;
 	}
 
+	private boolean isAbbreviation(AnnotationFS coveringAnnotation) {
+		String string = coveringAnnotation.getCoveredText();
+		return isAbbreviation(string);
+	}
+
+	public boolean isAbbreviation(String string) {
+		return ABBREVIATION.matcher(string).find();
+	}
+
 	private AnnotationFS splitSuffix(JCas cas, Type type, AnnotationFS annotation, Tree<Character> suffixes, List<AnnotationFS> splittedAnnotations, List<AnnotationFS> deletedAnnotations) {
 		AnnotationFS coveringAnnotation = annotation;
+		if(isAbbreviation(coveringAnnotation))
+			// do not split abbreviations
+			return coveringAnnotation;
 		AnnotationFS suffix = this.findSuffix(cas,type,annotation.getBegin(),annotation.getEnd(),annotation.getEnd(),suffixes);
 		if (suffix != null) {
 			if ((coveringAnnotation = this.fill(cas, type, coveringAnnotation, suffix, splittedAnnotations, deletedAnnotations)) != null) {

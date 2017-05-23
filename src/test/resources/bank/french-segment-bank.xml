@@ -68,4 +68,5 @@
   <segment type="final" reverse="true" value="-ci" />
   <segment type="final" reverse="true" value="-là" />
   <segment type="compound" reverse="false" value="c'est-à-dire" />
+  <segment type="compound" reverse="false" value="M." />
 </segments>

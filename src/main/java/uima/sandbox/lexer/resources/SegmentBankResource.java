@@ -38,34 +38,40 @@ public class SegmentBankResource implements SegmentBank {
 			String type = segment.getType();
 			Boolean reverse = segment.isReverse();
 			String value = segment.getValue();
-			HashTree<Character> tree = this.trees.get(type);
-			if (tree == null) {
-				tree = new HashTree<Character>();
-				this.trees.put(type, tree);
-			}
-			if (reverse == null) {
-                char[] cs = value.toCharArray();
-                Character[] characters = new Character[cs.length];
-                for (int index = 0; index < cs.length; index++) {
-                        characters[index] = new Character(cs[index]);
-                }
-				tree.add(characters, 0, characters.length);
-			} else if (reverse.booleanValue()) {
-				String eulav = new StringBuffer(value).reverse().toString();
-                char[] cs = eulav.toCharArray();
-                Character[] characters = new Character[cs.length];
-                for (int index = 0; index < cs.length; index++) {
-                        characters[index] = new Character(cs[index]);
-                }
-				tree.add(characters, 0, characters.length);
-			} else {
-                char[] cs = value.toCharArray();
-                Character[] characters = new Character[cs.length];
-                for (int index = 0; index < cs.length; index++) {
-                        characters[index] = new Character(cs[index]);
-                }
-				tree.add(characters, 0, characters.length);
-			} 			
+			addSegmentToTrees(type, reverse, value); 			
+			if(!value.toLowerCase().equals(value))
+				addSegmentToTrees(type, reverse, value.toLowerCase()); 			
+		}
+	}
+
+	private void addSegmentToTrees(String type, Boolean reverse, String value) {
+		HashTree<Character> tree = this.trees.get(type);
+		if (tree == null) {
+			tree = new HashTree<Character>();
+			this.trees.put(type, tree);
+		}
+		if (reverse == null) {
+		    char[] cs = value.toCharArray();
+		    Character[] characters = new Character[cs.length];
+		    for (int index = 0; index < cs.length; index++) {
+		            characters[index] = new Character(cs[index]);
+		    }
+			tree.add(characters, 0, characters.length);
+		} else if (reverse.booleanValue()) {
+			String eulav = new StringBuffer(value).reverse().toString();
+		    char[] cs = eulav.toCharArray();
+		    Character[] characters = new Character[cs.length];
+		    for (int index = 0; index < cs.length; index++) {
+		            characters[index] = new Character(cs[index]);
+		    }
+			tree.add(characters, 0, characters.length);
+		} else {
+		    char[] cs = value.toCharArray();
+		    Character[] characters = new Character[cs.length];
+		    for (int index = 0; index < cs.length; index++) {
+		            characters[index] = new Character(cs[index]);
+		    }
+			tree.add(characters, 0, characters.length);
 		}
 	}
 	
