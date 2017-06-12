@@ -2,8 +2,11 @@ package uima.sandbox.lexer.engines;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import org.apache.uima.analysis_engine.AnalysisEngineProcessException;
@@ -16,6 +19,8 @@ import org.apache.uima.fit.descriptor.ConfigurationParameter;
 import org.apache.uima.fit.descriptor.ExternalResource;
 import org.apache.uima.jcas.JCas;
 import org.apache.uima.jcas.tcas.Annotation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import uima.sandbox.lexer.models.Tree;
 import uima.sandbox.lexer.models.Unit;
@@ -23,8 +28,13 @@ import uima.sandbox.lexer.resources.SegmentBank;
 
 public class Lexer extends JCasAnnotator_ImplBase {
 	
+	private static final Logger LOGGER = LoggerFactory.getLogger(Lexer.class);
 	
 	private static final Pattern ABBREVIATION = Pattern.compile("^[A-Z][a-z]*\\.([A-Z][a-z]*\\.)+$");
+	
+
+	private AtomicLong totalTimeInMillis = new AtomicLong(0);
+
 	
 	// parameters
 	public static final String PARAM_TYPE = "Type";
@@ -38,9 +48,11 @@ public class Lexer extends JCasAnnotator_ImplBase {
 	private Type getType(JCas cas) {
 		return cas.getTypeSystem().getType(this.type);
 	}
-
+	
+	
 	@Override
 	public void process(JCas cas) throws AnalysisEngineProcessException {
+		long start = System.currentTimeMillis();
 		this.tokenize(cas);
 		Tree<Character> prefixes = this.bank.get("initial");
 		Tree<Character> suffixes = this.bank.get("final");
@@ -52,6 +64,14 @@ public class Lexer extends JCasAnnotator_ImplBase {
 			this.merge(cas, compound);
 			this.clean(cas);			
 		}
+		
+		long duration = System.currentTimeMillis() - start;
+		
+		totalTimeInMillis.addAndGet(duration);
+		LOGGER.debug("Tokenized document in {}ms [Cumulated: {}ms]", 
+				duration, 
+				totalTimeInMillis.get());
+
 	}
 	
 	/**
@@ -60,19 +80,37 @@ public class Lexer extends JCasAnnotator_ImplBase {
 	 * @param cas the common analysis structure
 	 */
 	private void clean(JCas cas) {
-		List<Annotation> annotations = new ArrayList<Annotation>();
+		List<Annotation> remAnnotations = new ArrayList<Annotation>();
 		Type type = this.getType(cas);
 		AnnotationIndex<Annotation> index = cas.getAnnotationIndex(type);
 		FSIterator<Annotation> iterator = index.iterator();
+		
+		Queue<Annotation> lastAnnotationBuffer = new LinkedList<>();
+		int lastEnd = -1;
+		
+		Annotation annotation;
 		while (iterator.hasNext()) {
-			Annotation annotation = iterator.next();
-			FSIterator<Annotation> subiterator = index.subiterator(annotation);
-			while (subiterator.hasNext()) {
-				Annotation a = subiterator.next();
-				annotations.add(a);
+			annotation = iterator.next();
+			if(annotation.getBegin()>lastEnd) { 
+				/*
+				 * Fast, easy and most frequent case: the annotation does 
+				 * not overlap with the ones in the buffer
+				 */
+				lastAnnotationBuffer.clear();
+			} else {
+				/*
+				 * Does not mean that is is contained in another annotation.
+				 */
+				for(Annotation candidateContainer:lastAnnotationBuffer)
+					if(candidateContainer.getBegin() <= annotation.getBegin()
+					  && candidateContainer.getEnd() >= annotation.getEnd())
+						// annotation is contained in candidateContainer
+						remAnnotations.add(annotation);
 			}
+			lastEnd = Integer.max(lastEnd, annotation.getEnd());
+			lastAnnotationBuffer.add(annotation);
 		}
-		for (Annotation a : annotations) {
+		for (Annotation a : remAnnotations) {
 			a.removeFromIndexes();
 		}
 	}
