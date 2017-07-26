@@ -2,10 +2,12 @@ package uima.sandbox.lexer.engines;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
@@ -53,15 +55,24 @@ public class Lexer extends JCasAnnotator_ImplBase {
 	@Override
 	public void process(JCas cas) throws AnalysisEngineProcessException {
 		long start = System.currentTimeMillis();
-		this.tokenize(cas);
+		if(LOGGER.isTraceEnabled()) 
+			LOGGER.trace("tokenizing");
+		List<AnnotationFS> tokens = this.tokenize(cas);
+		
 		Tree<Character> prefixes = this.bank.get("initial");
 		Tree<Character> suffixes = this.bank.get("final");
 		if (prefixes != null && suffixes != null) {
-			this.split(cas, prefixes, suffixes);
+			if(LOGGER.isTraceEnabled()) 
+				LOGGER.trace("Splitting");
+			this.split(cas, tokens, prefixes, suffixes);
 		}
 		Tree<Character> compound = this.bank.get("compound");
 		if (compound != null) {
+			if(LOGGER.isTraceEnabled()) 
+				LOGGER.trace("merging");
 			this.merge(cas, compound);
+			if(LOGGER.isTraceEnabled()) 
+				LOGGER.trace("cleaning");
 			this.clean(cas);			
 		}
 		
@@ -120,24 +131,32 @@ public class Lexer extends JCasAnnotator_ImplBase {
 	 * 
 	 * @param cas the common analysis structure
 	 */
-	private void tokenize(JCas cas) {
-		Type type = this.getType(cas);
+	private List<AnnotationFS> tokenize(JCas cas) {
+		List<AnnotationFS> tokens = new ArrayList<>();
 		String text = cas.getDocumentText();
 		int begin = 0;
 		int length = text.length();
+		int cnt = 0;
 		for (int index = begin; index < length; index++) {
 			if (this.hasChanged(text,index)) {
 				if (!this.areSpaces(text,begin,index)) {
-					AnnotationFS annotation = this.createAnnotation(cas,type,begin,index);
-					cas.getCas().addFsToIndexes(annotation);
+					AnnotationFS annotation = this.createAnnotation(cas,begin,index);
+					tokens.add(annotation);
+//					cas.getCas().addFsToIndexes(annotation);
+					cnt++;
 				}
 				begin = index;
 			} 
 		}
-			if (!this.areSpaces(text,begin,length)) {
-				AnnotationFS annotation = this.createAnnotation(cas,type,begin,length);
-				cas.getCas().addFsToIndexes(annotation);
-			}
+		if (!this.areSpaces(text,begin,length)) {
+			AnnotationFS annotation = this.createAnnotation(cas,begin,length);
+//			cas.getCas().addFsToIndexes(annotation);
+			tokens.add(annotation);
+			cnt++;
+		}
+		if(LOGGER.isTraceEnabled()) 
+			LOGGER.trace("Number of annotations created and indexed: {}", cnt);
+		return tokens;
 	}
 
 	private boolean areSpaces(String text, int begin, int end) {
@@ -208,41 +227,62 @@ public class Lexer extends JCasAnnotator_ImplBase {
 		currents.putAll(nexts);
 	}
 	
-	private void split(JCas cas, Tree<Character> prefixes, Tree<Character> suffixes) {
+	private void split(JCas cas, List<AnnotationFS> tokens, Tree<Character> prefixes, Tree<Character> suffixes) {
 		List<AnnotationFS> splittedAnnotations = new ArrayList<AnnotationFS>();
 		List<AnnotationFS> deletedAnnotations = new ArrayList<AnnotationFS>();
-		Type type = this.getType(cas);
-		AnnotationIndex<Annotation> index = cas.getAnnotationIndex(type);
-		FSIterator<Annotation> iterator = index.iterator();
-		while (iterator.hasNext()) {
-			Annotation annotation = iterator.next();
-
+//		Type type = this.getType(cas);
+//		AnnotationIndex<Annotation> index = cas.getAnnotationIndex(type);
+//		FSIterator<Annotation> iterator = index.iterator();
+		if(LOGGER.isTraceEnabled()) 
+			LOGGER.trace("Iterating over all annotations");
+//		while (iterator.hasNext()) {
+//			Annotation annotation = iterator.next();
+		for(AnnotationFS annotation:tokens) {
+			
 			/*
 			 * Split prefixes
 			 */
-			AnnotationFS resultingAnnotation = this.splitPrefix(cas, type, annotation, prefixes, splittedAnnotations, deletedAnnotations);
+			AnnotationFS resultingAnnotation = this.splitPrefix(cas, annotation, prefixes, splittedAnnotations, deletedAnnotations);
 			
 			/*
 			 * Split suffixes
 			 */
-			this.splitSuffix(cas, type, resultingAnnotation, suffixes, splittedAnnotations, deletedAnnotations);
+			this.splitSuffix(cas, resultingAnnotation, suffixes, splittedAnnotations, deletedAnnotations);
 		}
-		for (AnnotationFS annotation :splittedAnnotations) 
-			cas.getCas().addFsToIndexes(annotation);
+		
+		if(LOGGER.isTraceEnabled()) 
+			LOGGER.trace("Adding {} splitted annotations", splittedAnnotations.size());
+		for (AnnotationFS annotation :splittedAnnotations) {
+			tokens.add(annotation);
+//			cas.getCas().addFsToIndexes(annotation);
+		}
+		if(LOGGER.isTraceEnabled()) 
+			LOGGER.trace("Removing {} annotations", deletedAnnotations.size());
+		Set<AnnotationFS> deletedAnnotationsSet = new HashSet<>();
+		deletedAnnotationsSet.addAll(deletedAnnotations);
 		for (AnnotationFS annotation:deletedAnnotations) 
 			cas.getCas().removeFsFromIndexes(annotation);
+		tokens.removeAll(deletedAnnotationsSet);
+		if(LOGGER.isTraceEnabled()) 
+			LOGGER.trace("Adding {} tokens to indexes", tokens.size());
+		for(AnnotationFS fs:tokens) {
+			
+			cas.addFsToIndexes(fs);
+		}
+		if(LOGGER.isTraceEnabled()) 
+			LOGGER.trace("Tokens indexed in CAS");		
 	}
 
-	private AnnotationFS splitPrefix(JCas cas, Type type, AnnotationFS annotation, Tree<Character> prefixes, List<AnnotationFS> splittedAnnotations, List<AnnotationFS> deletedAnnotations) {
+	private AnnotationFS splitPrefix(JCas cas, AnnotationFS annotation, Tree<Character> prefixes, List<AnnotationFS> splittedAnnotations, List<AnnotationFS> deletedAnnotations) {
 		AnnotationFS coveringAnnotation = annotation;
 		if(isAbbreviation(coveringAnnotation))
 			// do not split abbreviations
 			return coveringAnnotation;
-		AnnotationFS prefix = this.findPrefix(cas,type,annotation.getBegin(),annotation.getEnd(),annotation.getBegin(),prefixes);
+		AnnotationFS prefix = this.findPrefix(cas,annotation.getBegin(),annotation.getEnd(),annotation.getBegin(),prefixes);
 		if (prefix != null) {
-			if ((coveringAnnotation = this.fill(cas, type, coveringAnnotation, prefix, splittedAnnotations, deletedAnnotations)) != null) {
+			if ((coveringAnnotation = this.fill(cas, coveringAnnotation, prefix, splittedAnnotations, deletedAnnotations)) != null) {
 				splittedAnnotations.add(prefix);
-				return this.splitPrefix(cas, type, coveringAnnotation, prefixes, splittedAnnotations, deletedAnnotations);
+				return this.splitPrefix(cas, coveringAnnotation, prefixes, splittedAnnotations, deletedAnnotations);
 			} 
 		}
 		return coveringAnnotation;
@@ -257,68 +297,68 @@ public class Lexer extends JCasAnnotator_ImplBase {
 		return ABBREVIATION.matcher(string).find();
 	}
 
-	private AnnotationFS splitSuffix(JCas cas, Type type, AnnotationFS annotation, Tree<Character> suffixes, List<AnnotationFS> splittedAnnotations, List<AnnotationFS> deletedAnnotations) {
+	private AnnotationFS splitSuffix(JCas cas, AnnotationFS annotation, Tree<Character> suffixes, List<AnnotationFS> splittedAnnotations, List<AnnotationFS> deletedAnnotations) {
 		AnnotationFS coveringAnnotation = annotation;
 		if(isAbbreviation(coveringAnnotation))
 			// do not split abbreviations
 			return coveringAnnotation;
-		AnnotationFS suffix = this.findSuffix(cas,type,annotation.getBegin(),annotation.getEnd(),annotation.getEnd(),suffixes);
+		AnnotationFS suffix = this.findSuffix(cas,annotation.getBegin(),annotation.getEnd(),annotation.getEnd(),suffixes);
 		if (suffix != null) {
-			if ((coveringAnnotation = this.fill(cas, type, coveringAnnotation, suffix, splittedAnnotations, deletedAnnotations)) != null) {
+			if ((coveringAnnotation = this.fill(cas, coveringAnnotation, suffix, splittedAnnotations, deletedAnnotations)) != null) {
 				splittedAnnotations.add(suffix);
-				return this.splitSuffix(cas, type, coveringAnnotation, suffixes, splittedAnnotations, deletedAnnotations);
+				return this.splitSuffix(cas, coveringAnnotation, suffixes, splittedAnnotations, deletedAnnotations);
 			}
 		}
 		return coveringAnnotation;
 	}
 
-	private AnnotationFS findPrefix(JCas cas,Type type,int begin,int end,int index,Tree<Character> current) {
+	private AnnotationFS findPrefix(JCas cas,int begin,int end,int index,Tree<Character> current) {
 		if (index < end) {
 			char ch = cas.getDocumentText().charAt(index);
 			Character c = Character.toLowerCase(ch);
 			Tree<Character> tree = current.get(c);
 			if (tree == null) {
 				if (current.leaf()) { 
-					return this.createAnnotation(cas,type,begin,index);
+					return this.createAnnotation(cas,begin,index);
 				} else {
 					return null;
 				}
 			} else {
-				return this.findPrefix(cas,type,begin,end,index + 1,tree);
+				return this.findPrefix(cas,begin,end,index + 1,tree);
 			}
 		} else {
 			return null;
 		}
 	}
 	
-	private AnnotationFS findSuffix(JCas cas,Type type,int begin,int end,int index,Tree<Character> current) {
+	private AnnotationFS findSuffix(JCas cas,int begin,int end,int index,Tree<Character> current) {
 		if (index > begin) {
 			char ch = cas.getDocumentText().charAt(index - 1);
 			Character c = Character.toLowerCase(ch);
 			Tree<Character> tree = current.get(c);
 			if (tree == null) {
 				if (current.leaf()) {
-					return this.createAnnotation(cas,type,index,end);
+					return this.createAnnotation(cas,index,end);
 				} else {
 					return null;
 				}
 			} else {
-				return this.findSuffix(cas,type,begin,end,index - 1,tree);
+				return this.findSuffix(cas,begin,end,index - 1,tree);
 			}
 		} else {
 			return null;
 		}
 	}
 	
-	private AnnotationFS fill(JCas cas,Type type,AnnotationFS coveringAnnotation,AnnotationFS coveredAnnotation,List<AnnotationFS> splittedAnnotations,List<AnnotationFS> deletedAnnotations) {
+	private AnnotationFS fill(JCas cas,AnnotationFS coveringAnnotation,AnnotationFS coveredAnnotation,List<AnnotationFS> splittedAnnotations,List<AnnotationFS> deletedAnnotations) {
 		if (coveringAnnotation.getBegin() < coveredAnnotation.getBegin()) {
 			deletedAnnotations.add(coveringAnnotation);
-			AnnotationFS newCoveringAnnotation = this.createAnnotation(cas, type, coveringAnnotation.getBegin(), coveredAnnotation.getBegin());
+			AnnotationFS newCoveringAnnotation = this.createAnnotation(cas, coveringAnnotation.getBegin(), coveredAnnotation.getBegin());
 			splittedAnnotations.add(newCoveringAnnotation);
 			return newCoveringAnnotation;
 		} else if (coveredAnnotation.getEnd() < coveringAnnotation.getEnd()) {
 			deletedAnnotations.add(coveringAnnotation);
-			AnnotationFS newCoveringAnnotation = this.createAnnotation(cas, type, coveredAnnotation.getEnd(), coveringAnnotation.getEnd());
+			AnnotationFS newCoveringAnnotation = this.createAnnotation(cas, coveredAnnotation.getEnd(), coveringAnnotation.getEnd());
 			splittedAnnotations.add(newCoveringAnnotation);
 			return newCoveringAnnotation;
 		} else {
@@ -326,8 +366,8 @@ public class Lexer extends JCasAnnotator_ImplBase {
 		}
 	}
 	
-	protected AnnotationFS createAnnotation(JCas cas,Type type,int begin,int end) {
-		return cas.getCas().createAnnotation(type, begin, end);
+	protected AnnotationFS createAnnotation(JCas cas,int begin,int end) {
+		return cas.getCas().createAnnotation(getType(cas), begin, end);
 	}
 	
 }

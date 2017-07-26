@@ -30,11 +30,7 @@ public class Benchmark {
 	public void printAll() throws Exception {
 		test(1000);
 		test(2000);
-		test(3000);
 		test(4000);
-		test(5000);
-		test(6000);
-		test(7000);
 		test(8000);
 	}
 
