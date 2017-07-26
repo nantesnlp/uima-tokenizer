@@ -3,54 +3,17 @@ package uima.sandbox.lexer;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import java.io.FileInputStream;
-import java.lang.reflect.Field;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
-import org.apache.uima.fit.factory.JCasFactory;
-import org.apache.uima.fit.factory.TypeSystemDescriptionFactory;
 import org.apache.uima.jcas.JCas;
-import org.apache.uima.resource.DataResource;
-import org.apache.uima.resource.metadata.TypeSystemDescription;
-import org.junit.Before;
 import org.junit.Test;
-import org.mockito.Mockito;
 
 import fr.univnantes.julestar.uima.testing.UIMATest;
 import uima.sandbox.lexer.engines.Lexer;
-import uima.sandbox.lexer.resources.SegmentBankResource;
 
 public class LexerSpec {
 
-	private static final Path RES = Paths.get("src", "test", "resources");
-	private static final Path FRENCH_BANK = RES.resolve("bank").resolve("french-segment-bank.xml");
-	private static final Path TYPE_SYSTEM = RES.resolve("TermSuite_TS.xml");
-	
-	Lexer lexer;
-	TypeSystemDescription typeSystemDesc;
-	
-	@Before
-	public void setup() throws Exception {
-		lexer = new Lexer();
-		SegmentBankResource segmentBankResource = new SegmentBankResource();
-		DataResource data = Mockito.mock(DataResource.class);
-		Mockito.when(data.getInputStream()).thenReturn(new FileInputStream(FRENCH_BANK.toString()));
-		segmentBankResource.load(data);
-		Field typeField = Lexer.class.getDeclaredField("type");
-		typeField.setAccessible(true);
-		typeField.set(lexer, "fr.univnantes.termsuite.types.WordAnnotation");
-		Field bankField = Lexer.class.getDeclaredField("bank");
-		bankField.setAccessible(true);
-		bankField.set(lexer, segmentBankResource);
-		typeSystemDesc = TypeSystemDescriptionFactory
-				.createTypeSystemDescriptionFromPath(TYPE_SYSTEM.toString());
-	}
-	
-
 	@Test
 	public void testCompound() throws Exception {
-		JCas cas = tokenize("Ce c'est-à-dire reste.");
+		JCas cas = Tests.tokenize("Ce c'est-à-dire reste.");
 		UIMATest.assertThat(cas)
 		.containsAnnotation("WordAnnotation", 0, 2)
 		.containsAnnotation("WordAnnotation", 3, 15)
@@ -62,7 +25,7 @@ public class LexerSpec {
 
 	@Test
 	public void supportAbbreviations() throws Exception {
-		JCas cas = tokenize("Dupont va à la C.A.F. pour");
+		JCas cas = Tests.tokenize("Dupont va à la C.A.F. pour");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 6)
 			.containsAnnotation("WordAnnotation", 7, 9)
@@ -76,7 +39,7 @@ public class LexerSpec {
 
 	@Test
 	public void supportTitle() throws Exception {
-		JCas cas = tokenize("M. Dupont.");
+		JCas cas = Tests.tokenize("M. Dupont.");
 		UIMATest.assertThat(cas)
 		.containsAnnotation("WordAnnotation", 0, 2)
 		.containsAnnotation("WordAnnotation", 3, 9)
@@ -87,6 +50,7 @@ public class LexerSpec {
 	
 	@Test
 	public void testIsAbbreviation() throws Exception {
+		Lexer lexer = Tests.getLexer();
 		assertFalse(lexer.isAbbreviation(""));
 		assertFalse(lexer.isAbbreviation("M"));
 		assertFalse(lexer.isAbbreviation("Mgergaegvae"));
@@ -101,7 +65,7 @@ public class LexerSpec {
 
 	@Test
 	public void doNotSplitSentencesWhenSpaceMissingNormal() throws Exception {
-		JCas cas = tokenize("Je vais bien.Tout va bien.");
+		JCas cas = Tests.tokenize("Je vais bien.Tout va bien.");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 2)
 			.containsAnnotation("WordAnnotation", 3, 7)
@@ -116,7 +80,7 @@ public class LexerSpec {
 
 	@Test
 	public void processNormal() throws Exception {
-		JCas cas = tokenize("La mère Michèle.");
+		JCas cas = Tests.tokenize("La mère Michèle.");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 2)
 			.containsAnnotation("WordAnnotation", 3, 7)
@@ -128,7 +92,7 @@ public class LexerSpec {
 
 	@Test
 	public void processLastSingleToken() throws Exception {
-		JCas cas = tokenize("La .");
+		JCas cas = Tests.tokenize("La .");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 2)
 			.containsAnnotation("WordAnnotation", 3, 4)
@@ -138,7 +102,7 @@ public class LexerSpec {
 
 	@Test
 	public void doNotprocessLastWhitespaces() throws Exception {
-		JCas cas = tokenize("La la ");
+		JCas cas = Tests.tokenize("La la ");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 2)
 			.containsAnnotation("WordAnnotation", 3, 5)
@@ -148,7 +112,7 @@ public class LexerSpec {
 
 
 	public void processLastSize2Token() throws Exception {
-		JCas cas = tokenize("La li");
+		JCas cas = Tests.tokenize("La li");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 2)
 			.containsAnnotation("WordAnnotation", 3, 5)
@@ -159,7 +123,7 @@ public class LexerSpec {
 	
 	@Test
 	public void processWithSuffix() throws Exception {
-		JCas cas = tokenize("La mère Michèle a-t-elle perdu son chat?");
+		JCas cas = Tests.tokenize("La mère Michèle a-t-elle perdu son chat?");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 2)
 			.containsAnnotation("WordAnnotation", 3, 7)
@@ -172,7 +136,7 @@ public class LexerSpec {
 	
 	@Test
 	public void processWithPrefix() throws Exception {
-		JCas cas = tokenize("Fermé jusqu'à demain.");
+		JCas cas = Tests.tokenize("Fermé jusqu'à demain.");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 5)
 			.containsAnnotation("WordAnnotation", 6, 12)
@@ -186,7 +150,7 @@ public class LexerSpec {
 	
 	@Test
 	public void processWithPrefixAndDoubleSuffix() throws Exception {
-		JCas cas = tokenize("Tout (va-t-il) bien?");
+		JCas cas = Tests.tokenize("Tout (va-t-il) bien?");
 		UIMATest.assertThat(cas)
 			.containsAnnotation("WordAnnotation", 0, 4)
 			.containsAnnotation("WordAnnotation", 5, 6)
@@ -200,11 +164,5 @@ public class LexerSpec {
 	}
 
 
-	private JCas tokenize(String string) throws Exception{
-		JCas cas = JCasFactory.createJCas(typeSystemDesc);
-		cas.setDocumentText(string);
-		lexer.process(cas);
-		return cas;
-	}
 
 }
